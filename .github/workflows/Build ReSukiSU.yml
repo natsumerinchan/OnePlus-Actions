@@ -21,7 +21,7 @@ on:
           - 'sm7635'
           - 'sm7550'
           - 'sm6375'
-        default: 'sm8650'
+        default: 'sm8550'
         
       FEIL:
         description: "手机型号"
@@ -60,7 +60,7 @@ on:
           - 'oneplus_nord_4_b'
           - 'oneplus_nord_ce4_lite_5g'
           - 'oneplus_nord_ce4_b'
-        default: 'oneplus_12_b'
+        default: 'oneplus_11_b'
         
       ANDROID_VERSION:
         description: "内核安卓KMI版本"
@@ -71,7 +71,7 @@ on:
           - 'android14'
           - 'android13'
           - 'android12'
-        default: 'android14'
+        default: 'android13'
         
       KERNEL_VERSION:
         description: "内核版本"
@@ -82,7 +82,7 @@ on:
           - '6.1'
           - '5.15'
           - '5.10'
-        default: '6.1'
+        default: '5.15'
 
       SUSFS:
         description: "是否启用SUSFS"
@@ -91,7 +91,7 @@ on:
         options:
           - 'On'
           - 'Off'
-        default: 'Off'
+        default: 'On'
 
       KPM:
         description: "是否启用KPM"
@@ -109,7 +109,7 @@ on:
         options:
           - 'On'
           - 'Off'
-        default: 'Off'
+        default: 'On'
 
       bbg:
         description: "是否启用BBG基带保护"
@@ -138,6 +138,15 @@ on:
           - 'Off'
         default: 'On'
 
+      lxc-docker:
+        description: "是否开启LXC/Docker支持？"
+        required: true
+        type: choice
+        options:
+          - 'On'
+          - 'Off'
+        default: 'Off'
+
       UNICODE_BYPASS:
         description: "是否添加Unicode零宽绕过修复补丁(高内核版本不推荐开启, 建议使用 https://t.me/real5ec1cff/271 无痛修复)"
         required: true
@@ -145,7 +154,7 @@ on:
         options:
           - 'On'
           - 'Off'
-        default: 'Off'
+        default: 'On'
          
 jobs:
   build:
@@ -276,7 +285,7 @@ jobs:
           echo "✅ 内核配置完成"
 
       - name: "⚡ Setup Baseband-guard | 配置 Baseband-guard"
-        if: ${{ github.event.inputs.bbg == 'On' && github.event.inputs.KPM == 'Off' }}
+        if: ${{ github.event.inputs.bbg == 'On' && github.event.inputs.KPM == 'Off' && github.event.inputs.lxc-docker == 'Off' }}
         run: |
           set -e
           cd kernel_workspace/kernel_platform/common
@@ -304,7 +313,7 @@ jobs:
 
           echo "⬇️ 克隆所需补丁..."
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then          
-            git clone https://github.com/cctv18/susfs4oki.git -b oki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
+            git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
           fi
           git clone https://github.com/Xiaomichael/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
@@ -312,9 +321,9 @@ jobs:
           cd kernel_platform
           echo "📝 复制补丁文件..."
           if [ "${{ github.event.inputs.SUSFS }}" == "On" ]; then
-            cp ../susfs4oki/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
-            cp ../susfs4oki/kernel_patches/fs/* ./common/fs/
-            cp ../susfs4oki/kernel_patches/include/linux/* ./common/include/linux/
+            cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
+            cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
+            cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
           else
             cp ../kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch ./common/
           fi
@@ -403,6 +412,28 @@ jobs:
             echo "✅ OGKI转换GKI_patch完成"
           fi
           
+      - name: "⚙️ Apply LXC/Docker Patch | 应用LXC/Docker补丁"
+        if: ${{ github.event.inputs.lxc-docker == 'On' }}
+        run: |
+          cd kernel_workspace/kernel_platform/common
+          echo "⬇️ 正在拉取LXC/Docker补丁"
+          git clone https://github.com/natsumerinchan/GKI_KernelSU_SUSFS.git
+          echo "⬇️ 正在应用LXC/Docker补丁"
+          PATCH_VERSION=$(echo "${{ github.event.inputs.ANDROID_VERSION }}" | sed 's/android/a/')
+          cp "./GKI_KernelSU_SUSFS/lxc_docker_patches/$PATCH_VERSION-${{ github.event.inputs.KERNEL_VERSION }}/stock_gki_defconfig" "./arch/arm64/configs/stock_gki_defconfig"
+          if [[ "${{ github.event.inputs.KERNEL_VERSION }}" == "5.15" ]]; then
+            rm -rf "./GKI_KernelSU_SUSFS/lxc_docker_patches/$PATCH_VERSION-${{ github.event.inputs.KERNEL_VERSION }}/GKI_use_Android_ABI_padding_for_POSIX_MQUEUE_user_struct_fields.patch"
+            rm -rf "./GKI_KernelSU_SUSFS/lxc_docker_patches/$PATCH_VERSION-${{ github.event.inputs.KERNEL_VERSION }}/gki_use_Android_ABI_padding_for_SYSVIPC_task_struct_fields.patch"
+            rm -rf "./GKI_KernelSU_SUSFS/lxc_docker_patches/$PATCH_VERSION-${{ github.event.inputs.KERNEL_VERSION }}/Ignore_symbols_crc_check.patch"
+          fi
+          for patch_file in "./GKI_KernelSU_SUSFS/lxc_docker_patches/$PATCH_VERSION-${{ github.event.inputs.KERNEL_VERSION }}"/*.patch; do
+            if [ -f "$patch_file" ]; then
+              patch_name=$(basename "$patch_file")
+              echo "应用补丁: $patch_name"
+              patch -p1 -F 3 < "$patch_file"
+            fi
+          done
+
       - name: "⚙️ Configure Kernel Options | 配置内核选项"
         run: |
           cd kernel_workspace/kernel_platform
@@ -442,7 +473,7 @@ jobs:
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-          if [ "${{ github.event.inputs.bbg }}" == "On" ] && [ "${{ github.event.inputs.KPM }}" == "Off" ]; then
+          if [ "${{ github.event.inputs.bbg }}" == "On" ] && [ "${{ github.event.inputs.KPM }}" == "Off" ] && [ "${{ github.event.inputs.lxc-docker }}" == "Off" ]; then
             echo "⚡ 配置 BBG 中..."
             echo 'CONFIG_BBG=y' >> ./common/arch/arm64/configs/gki_defconfig
             echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> ./common/arch/arm64/configs/gki_defconfig
@@ -511,6 +542,71 @@ jobs:
           #跳过将uapi标准头安装到 usr/include 目录的不必要操作，节省编译时间
           echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
 
+          if [ "${{ github.event.inputs.lxc-docker }}" == "On" ]; then
+            # sed -i 's#$(obj)/config_data: $(KCONFIG_CONFIG) FORCE#$(obj)/config_data: arch/arm64/configs/stock_gki_defconfig FORCE#' ./common/kernel/Makefile
+            echo "📦 启用LXC/Docker功能..."
+            # Namespaces & IPC
+            echo "CONFIG_SYSVIPC=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_POSIX_MQUEUE=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_UTS_NS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_PID_NS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IPC_NS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_USER_NS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NET_NS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            # Cgroups
+            echo "CONFIG_CGROUP_PIDS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CGROUP_PERF=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_HUGETLB_PAGE=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CGROUP_HUGETLB=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CGROUP_DEVICE=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CGROUP_FREEZER=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NET_CLS_CGROUP=y" >> ./common/arch/arm64/configs/gki_defconfig
+            # Networking
+            echo "CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETFILTER_XT_MATCH_IPVS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETFILTER_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NF_CONNTRACK=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_BRIDGE_NETFILTER=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP6_NF_NAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SCTP=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_VS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_VS_NFCT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_VS_PROTO_TCP=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_VS_PROTO_UDP=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_VS_RR=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NFT_CT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NFT_FIB_IPV4=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NFT_FIB_IPV6=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NFT_FIB=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NFT_MASQ=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NFT_NAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NF_TABLES=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_VXLAN=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_BRIDGE_VLAN_FILTERING=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_MACVLAN=y" >> ./common/arch/arm64/configs/gki_defconfig
+            # Device Support
+            echo "CONFIG_DEVTMPFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NULL_TTY=y" >> ./common/arch/arm64/configs/gki_defconfig
+            # echo "CONFIG_CFS_BANDWIDTH=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_SECURITY_APPARMOR=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_BTRFS_FS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_BTRFS_FS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_MODULE_FORCE_LOAD=y" >> ./common/arch/arm64/configs/gki_defconfig
+            # Checkpoint/Restore
+            echo "CONFIG_CHECKPOINT_RESTORE=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_FHANDLE=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_UNIX_DIAG=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_PACKET_DIAG=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETLINK_DIAG=y" >> ./common/arch/arm64/configs/gki_defconfig
+            # Build Configuration
+            echo "CONFIG_LTO_CLANG_THIN=y" >> ./common/arch/arm64/configs/gki_defconfig
+            sed -i 's/^CONFIG_PID_NS is not set//' ./common/arch/arm64/configs/gki_defconfig
+            sed -i 's/^CONFIG_LTO_CLANG_FULL=y//' ./common/arch/arm64/configs/gki_defconfig
+            sed -i 's/^CONFIG_MODULE_SCMVERSION=y//' ./common/arch/arm64/configs/gki_defconfig
+            sed -i 's/^CONFIG_VT is not set//' ./common/arch/arm64/configs/gki_defconfig
+          fi
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
           echo "✅ 内核配置更新完成"

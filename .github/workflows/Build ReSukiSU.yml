@@ -115,6 +115,15 @@ on:
           - 'Off'
         default: 'On'
 
+      pstore-screen:
+        description: "是否启用pstore-screen"
+        required: true
+        type: choice
+        options:
+          - 'On'
+          - 'Off'
+        default: 'Off'
+
       bbg:
         description: "是否启用BBG基带保护"
         required: true
@@ -180,7 +189,7 @@ on:
          
 jobs:
   build:
-    name: For ${{ github.event.inputs.FEIL }} BBG ${{ github.event.inputs.bbg }} DroidSpaces ${{ github.event.inputs.droidspaces }} lz4kd ${{ github.event.inputs.lz4kd }} SUSFS ${{ github.event.inputs.SUSFS }}
+    name: For ${{ github.event.inputs.FEIL }} BBG ${{ github.event.inputs.bbg }} DroidSpaces ${{ github.event.inputs.droidspaces }} lz4kd ${{ github.event.inputs.lz4kd }} SUSFS ${{ github.event.inputs.SUSFS }} pstore-screen ${{ github.event.inputs.pstore-screen }}
     runs-on: ubuntu-latest
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
@@ -339,7 +348,21 @@ jobs:
           fi
 
           echo "✅ ReSukiSU 配置完成"
-          
+
+      - name: "⚡ Setup pstore-screen | 配置 pstore-screen"
+        if: ${{ github.event.inputs.pstore-screen == 'On' }}
+        run: |
+          cd kernel_workspace
+          echo "⬇️ 克隆仓库对应内核版本分支..."
+          git clone https://github.com/cctv18/pstore-screen.git -b ${{ github.event.inputs.KERNEL_VERSION }}
+          cp -r ./pstore-screen/src/* ./kernel_platform/common
+          cp ./pstore-screen/patches/pstore-screen-kernel.patch ./kernel_platform/common/
+          cp ./pstore-screen/compat/* ./kernel_platform/common/
+          cat ./pstore-screen/patches/pstore_screen_config >> ./kernel_platform/common/arch/arm64/configs/gki_defconfig
+          cd ./kernel_platform/common/
+          patch -p1 -F 3 < ./pstore-screen-kernel.patch
+          patch -p1 -F 3 < ./pstore-screen-build-compat.patch
+
       - name: "🔧 Setup Patches | 配置补丁"
         run: |
           cd kernel_workspace

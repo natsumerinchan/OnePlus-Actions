@@ -160,6 +160,15 @@ on:
           - 'Off'
         default: 'On'
 
+      USB-Arsenal:
+        description: "是否开启USB-Arsenal支持？"
+        required: true
+        type: choice
+        options:
+          - 'On'
+          - 'Off'
+        default: 'On'
+
       UNICODE_BYPASS:
         description: "是否添加Unicode零宽绕过修复补丁(除5.10版本外版本不推荐开启, 建议使用 https://t.me/real5ec1cff/271 无痛修复)"
         required: true
@@ -604,6 +613,21 @@ jobs:
             patch -p1 -F 3 < "./Droidspaces_Kernel_patch/cgroup_limits/fix_cgroup_limits_kabi_${{ github.event.inputs.KERNEL_VERSION }}.$suffix.patch"
           fi
 
+      - name: "⚙️ Apply USB-Arsenal Patch | 应用USB-Arsenal补丁"
+        if: ${{ github.event.inputs.USB-Arsenal == 'On' }}
+        run: |
+          cd kernel_workspace/kernel_platform/common
+          echo "⬇️ 正在拉取USB-Arsenal补丁"
+          git clone https://github.com/ravindu644/USB-Arsenal.git
+          echo "⬇️ 正在应用USB-Arsenal补丁"
+          for patch_file in "./USB-Arsenal/kernel-patches/${{ github.event.inputs.KERNEL_VERSION }}"/*.patch; do
+            if [ -f "$patch_file" ]; then
+              patch_name=$(basename "$patch_file")
+              echo "应用补丁: $patch_name"
+              patch -p1 -F 3 < "$patch_file"
+            fi
+          done
+
       - name: "⚙️ Configure Kernel Options | 配置内核选项"
         run: |
           cd kernel_workspace/kernel_platform
@@ -746,6 +770,15 @@ jobs:
             echo "CONFIG_CFS_BANDWIDTH=y" >> ./common/arch/arm64/configs/gki_defconfig
             # TTL修复
             echo "CONFIG_NETFILTER_XT_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
+          if [ "${{ github.event.inputs.USB-Arsenal }}" == "On" ]; then
+            echo "CONFIG_USB_CONFIGFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_USB_CONFIGFS_MASS_STORAGE=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_USB_CONFIGFS_F_HID=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_USB_CONFIGFS_NCM=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_USB_CONFIGFS_RNDIS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_NF_NAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_NF_TARGET_MASQUERADE=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
           echo "⚡ Remove check_defconfig"
           sed -i 's/check_defconfig//' ./common/build.config.gki

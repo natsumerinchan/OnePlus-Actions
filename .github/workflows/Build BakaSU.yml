@@ -342,6 +342,7 @@ jobs:
 
           # 下载并执行设置脚本
           echo "🛠️ 正在设置BakaSU..."
+          git clone https://github.com/${{ github.event.inputs.KERNELSU_REPO_OWNER }}/BakaSU.git KernelSU
           curl -LSs "https://raw.githubusercontent.com/${{ github.event.inputs.KERNELSU_REPO_OWNER }}/BakaSU/main/kernel/setup.sh" | bash -s ${{ github.event.inputs.KERNELSU_BRANCH }}
 
           cd KernelSU
